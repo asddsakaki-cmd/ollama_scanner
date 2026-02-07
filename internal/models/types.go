@@ -4,6 +4,7 @@
 package models
 
 import (
+	"fmt"
 	"net/netip"
 	"time"
 )
@@ -16,6 +17,10 @@ type Target struct {
 
 // Address returns the target as "ip:port" string
 func (t Target) Address() string {
+	// Validate port range to prevent integer overflow
+	if t.Port < 0 || t.Port > 65535 {
+		return fmt.Sprintf("%s:invalid_port_%d", t.IP.String(), t.Port)
+	}
 	return netip.AddrPortFrom(t.IP, uint16(t.Port)).String()
 }
 

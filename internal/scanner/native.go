@@ -288,8 +288,9 @@ func init() {
 func ValidateRateLimit(targetCount uint64, rateLimit int) error {
 	// Warn for internet-wide scanning
 	if targetCount > 100000000 { // > 100M targets
+		// Use string formatting to avoid integer overflow in logging
 		logger.Warn("Very large target set detected",
-			logger.Int64("targets", int64(targetCount)),
+			logger.String("targets", fmt.Sprintf("%d", targetCount)),
 			logger.String("estimate", fmt.Sprintf("~%.1f days at %d req/s", float64(targetCount)/float64(rateLimit*86400), rateLimit)),
 		)
 		return fmt.Errorf("target count exceeds safety limit (100M). Use -rate flag to increase speed or specify smaller CIDR")

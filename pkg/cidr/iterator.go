@@ -92,9 +92,18 @@ func (it *Iterator) Count() uint64 {
 	for _, prefix := range it.prefixes {
 		bits := prefix.Bits()
 		if prefix.Addr().Is4() {
-			total += uint64(1) << uint(32-bits)
+			// bits is validated to be 16-32 by NewIterator
+			// Explicit bounds check to prevent overflow
+			if bits < 0 || bits > 32 {
+				continue // Invalid, skip
+			}
+			hostBits := uint(32 - bits)
+			total += uint64(1) << hostBits
 		} else {
 			// For IPv6, cap to reasonable number
+			if bits < 0 || bits > 128 {
+				continue // Invalid, skip
+			}
 			hostBits := 128 - bits
 			if hostBits > 60 {
 				total += uint64(1) << 60 // Cap to ~1 billion to prevent overflow

@@ -462,7 +462,8 @@ func prepareTargets(cfg *core.Config, maxTargets int64) ([]models.Target, int64,
 	}
 
 	// Check max targets limit
-	if targetCount > uint64(maxTargets) {
+	// SECURITY: Prevent integer overflow by comparing same types
+	if maxTargets > 0 && targetCount > uint64(maxTargets) {
 		return nil, 0, fmt.Errorf("target count %d exceeds maximum allowed %d. Use -max-targets flag to override",
 			targetCount, maxTargets)
 	}
