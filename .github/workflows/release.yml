@@ -1,0 +1,125 @@
+# .github/workflows/release.yml
+# Automated release builds for multiple platforms
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-matrix:
+    name: Build ${{ matrix.os }}/${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            suffix: linux-amd64
+          - os: linux
+            arch: arm64
+            suffix: linux-arm64
+          - os: darwin
+            arch: amd64
+            suffix: darwin-amd64
+          - os: darwin
+            arch: arm64
+            suffix: darwin-arm64
+          - os: windows
+            arch: amd64
+            suffix: windows-amd64
+            extension: .exe
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+    
+    - name: Build binary
+      env:
+        GOOS: ${{ matrix.os }}
+        GOARCH: ${{ matrix.arch }}
+        CGO_ENABLED: 0
+      run: |
+        output="ollama-scanner-${{ matrix.suffix }}${{ matrix.extension }}"
+        go build -ldflags "-s -w -X main.Version=${{ github.ref_name }}" -o $output ./cmd/scanner
+        echo "Built: $output"
+        ls -la $output
+    
+    - name: Create archive
+      run: |
+        mkdir -p dist/ollama-scanner-${{ matrix.suffix }}
+        cp ollama-scanner-${{ matrix.suffix }}${{ matrix.extension }} dist/ollama-scanner-${{ matrix.suffix }}/ollama-scanner${{ matrix.extension }}
+        cp README.md LICENSE configs/config.yaml dist/ollama-scanner-${{ matrix.suffix }}/
+        cd dist
+        if [ "${{ matrix.os }}" = "windows" ]; then
+          zip -r ../ollama-scanner-${{ matrix.suffix }}.zip ollama-scanner-${{ matrix.suffix }}
+        else
+          tar -czf ../ollama-scanner-${{ matrix.suffix }}.tar.gz ollama-scanner-${{ matrix.suffix }}
+        fi
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ollama-scanner-${{ matrix.suffix }}
+        path: ollama-scanner-${{ matrix.suffix }}.*
+
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Login to Docker Hub
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Build and push
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/ollama-scanner:${{ github.ref_name }}
+          ${{ secrets.DOCKER_USERNAME }}/ollama-scanner:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build-matrix, docker]
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        pattern: ollama-scanner-*
+    
+    - name: Display artifacts
+      run: ls -R artifacts
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: artifacts/**/*
+        generate_release_notes: true
+        draft: false
+        prerelease: false

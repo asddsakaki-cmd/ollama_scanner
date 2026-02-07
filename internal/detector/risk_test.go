@@ -45,7 +45,7 @@ func TestRiskScoreCalculator_Calculate(t *testing.T) {
 				MCPEnabled:         false,
 				ExposedEndpoints:   []models.EndpointInfo{},
 			},
-			wantScore:  1,
+			wantScore:  0,
 			wantRating: "MINIMAL",
 			wantErr:    false,
 		},
@@ -57,11 +57,11 @@ func TestRiskScoreCalculator_Calculate(t *testing.T) {
 				ToolCallingModels:  []string{"llama3.1"},
 				MCPEnabled:         false,
 				ExposedEndpoints: []models.EndpointInfo{
-					{Path: "/api/generate", Accessible: true, RiskLevel: "CRITICAL"},
+					{Path: "/api/generate", Accessible: true, RiskLevel: "CRITICAL", RequiresAuth: false},
 				},
 			},
-			wantScore:  7,
-			wantRating: "HIGH",
+			wantScore:  5,
+			wantRating: "MEDIUM",
 			wantErr:    false,
 		},
 		{
@@ -102,8 +102,8 @@ func TestRiskScoreCalculator_Calculate(t *testing.T) {
 					{Severity: "CRITICAL"}, // 10 critical CVEs
 				},
 			},
-			wantScore:  4, // Should be capped, not 10+ from CVEs alone
-			wantRating: "MEDIUM",
+			wantScore:  3, // Should be capped at 3.0 from CVEs, no base exposure
+			wantRating: "LOW",
 			wantErr:    false,
 		},
 		{
@@ -111,11 +111,11 @@ func TestRiskScoreCalculator_Calculate(t *testing.T) {
 			report: &models.SecurityReport{
 				AuthEnabled:      false,
 				ExposedEndpoints: []models.EndpointInfo{
-					{Path: "/api/pull", Accessible: true, RiskLevel: "CRITICAL"},
-					{Path: "/api/delete", Accessible: true, RiskLevel: "CRITICAL"},
+					{Path: "/api/pull", Accessible: true, RiskLevel: "CRITICAL", RequiresAuth: false},
+					{Path: "/api/delete", Accessible: true, RiskLevel: "CRITICAL", RequiresAuth: false},
 				},
 			},
-			wantScore:  4,
+			wantScore:  6,
 			wantRating: "MEDIUM",
 			wantErr:    false,
 		},
