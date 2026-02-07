@@ -278,7 +278,7 @@ func TestValidateCIDRs(t *testing.T) {
 	}{
 		{
 			name:    "valid list",
-			cidrs:   []string{"192.168.1.0/24", "10.0.0.0/8"},
+			cidrs:   []string{"192.168.1.0/24", "10.0.0.0/16"}, // /16 is max allowed
 			wantErr: false,
 		},
 		{
@@ -290,6 +290,16 @@ func TestValidateCIDRs(t *testing.T) {
 			name:    "with whitespace",
 			cidrs:   []string{"  192.168.1.0/24  "},
 			wantErr: false, // Should trim whitespace
+		},
+		{
+			name:    "cidr too large ipv4",
+			cidrs:   []string{"10.0.0.0/8"}, // /8 exceeds /16 limit
+			wantErr: true,
+		},
+		{
+			name:    "cidr too large ipv6",
+			cidrs:   []string{"2000::/32"}, // /32 exceeds /64 limit
+			wantErr: true,
 		},
 	}
 

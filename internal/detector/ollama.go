@@ -25,7 +25,38 @@ var (
 	ErrConnectionFailed = errors.New("connection failed")
 	ErrTimeout          = errors.New("operation timed out")
 	ErrAuthRequired     = errors.New("authentication required")
+	ErrPrivateIPBlocked = errors.New("private IP addresses are blocked for security")
+	ErrMetadataBlocked  = errors.New("cloud metadata endpoints are blocked")
 )
+
+// blockedMetadataEndpoints contains cloud provider metadata IPs that should never be scanned
+var blockedMetadataEndpoints = map[string]bool{
+	"169.254.169.254": true, // AWS, GCP, Azure metadata
+	"169.254.170.2":   true, // AWS ECS metadata
+	"192.0.0.192":     true, // Oracle Cloud metadata
+}
+
+// validateTarget checks if target is allowed (SSRF protection)
+func validateTarget(target models.Target) error {
+	// Block cloud metadata endpoints
+	if blockedMetadataEndpoints[target.IP.String()] {
+		return ErrMetadataBlocked
+	}
+	
+	// Block private IP ranges to prevent internal network scanning
+	// This can be disabled with --allow-private if needed for internal scanning
+	if target.IP.IsLoopback() {
+		return fmt.Errorf("%w: loopback address %s", ErrPrivateIPBlocked, target.IP)
+	}
+	if target.IP.IsPrivate() {
+		return fmt.Errorf("%w: private address %s", ErrPrivateIPBlocked, target.IP)
+	}
+	if target.IP.IsLinkLocalUnicast() {
+		return fmt.Errorf("%w: link-local address %s", ErrPrivateIPBlocked, target.IP)
+	}
+	
+	return nil
+}
 
 // KnownCVEs database (Ollama-specific)
 var KnownCVEs = map[string]models.CVEInfo{
@@ -84,7 +115,13 @@ func NewClient(timeout time.Duration) *Client {
 }
 
 // Detect checks if target is running Ollama
+// SECURITY: Validates target is not a private IP or metadata endpoint (SSRF protection)
 func (c *Client) Detect(ctx context.Context, target models.Target) (*OllamaInfo, error) {
+	// SSRF protection: validate target is allowed
+	if err := validateTarget(target); err != nil {
+		return nil, err
+	}
+	
 	info := &OllamaInfo{}
 
 	// Check root endpoint
@@ -120,6 +157,9 @@ func (c *Client) Detect(ctx context.Context, target models.Target) (*OllamaInfo,
 
 // GetVersion retrieves Ollama version
 func (c *Client) GetVersion(ctx context.Context, target models.Target) (string, error) {
+	if err := validateTarget(target); err != nil {
+		return "", err
+	}
 	url := fmt.Sprintf("http://%s/api/version", target.Address())
 	body, status, err := c.get(ctx, url)
 	if err != nil {

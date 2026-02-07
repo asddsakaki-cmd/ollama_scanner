@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -221,7 +222,16 @@ func IsPrivate(addr netip.Addr) bool {
 	return false
 }
 
-// ValidateCIDRs validates a list of CIDR strings
+// CIDR size limits for DoS protection
+const (
+	// MaxIPv4Hosts limits IPv4 scans to /16 (65,536 hosts max)
+	MaxIPv4PrefixSize = 16
+	// MaxIPv6Hosts limits IPv6 scans to /64 (standard subnet size)
+	MaxIPv6PrefixSize = 64
+)
+
+// ValidateCIDRs validates a list of CIDR strings and enforces size limits
+// to prevent DoS attacks via memory exhaustion
 func ValidateCIDRs(cidrs []string) error {
 	for _, cidr := range cidrs {
 		cidr = strings.TrimSpace(cidr)
@@ -229,9 +239,26 @@ func ValidateCIDRs(cidrs []string) error {
 			continue
 		}
 		
-		if _, err := netip.ParsePrefix(cidr); err != nil {
+		prefix, err := netip.ParsePrefix(cidr)
+		if err != nil {
+			// Try parsing as single IP
 			if _, err := netip.ParseAddr(cidr); err != nil {
-				return fmt.Errorf("invalid CIDR or IP %q", cidr)
+				return fmt.Errorf("invalid CIDR or IP %q: expected format like \"192.168.1.0/24\" or \"10.0.0.1\"", cidr)
+			}
+			continue
+		}
+		
+		// Enforce CIDR size limits for DoS protection
+		bits := prefix.Bits()
+		if prefix.Addr().Is4() {
+			if bits < MaxIPv4PrefixSize {
+				return fmt.Errorf("IPv4 CIDR %s too large: /%d exceeds maximum allowed /%d (65,536 hosts)", 
+					cidr, bits, MaxIPv4PrefixSize)
+			}
+		} else {
+			if bits < MaxIPv6PrefixSize {
+				return fmt.Errorf("IPv6 CIDR %s too large: /%d exceeds maximum allowed /%d", 
+					cidr, bits, MaxIPv6PrefixSize)
 			}
 		}
 	}
@@ -239,8 +266,47 @@ func ValidateCIDRs(cidrs []string) error {
 }
 
 // ParseCIDRFile parses CIDRs from a file (one per line)
+// SECURITY: Validates filename to prevent path traversal attacks
 func ParseCIDRFile(filename string) ([]string, error) {
-	data, err := os.ReadFile(filename)
+	// Prevent path traversal attacks
+	if strings.Contains(filename, "..") {
+		return nil, fmt.Errorf("invalid filename: path traversal detected")
+	}
+	
+	// Clean the path and convert to absolute
+	cleanPath := filepath.Clean(filename)
+	absPath, err := filepath.Abs(cleanPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve path: %w", err)
+	}
+	
+	// Get current working directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get working directory: %w", err)
+	}
+	
+	// Ensure file is within current directory tree (prevent reading /etc/passwd, etc.)
+	if !strings.HasPrefix(absPath, cwd) {
+		return nil, fmt.Errorf("invalid filename: must be within current directory or subdirectories")
+	}
+	
+	// Check if file is a regular file (not a symlink to sensitive file)
+	info, err := os.Lstat(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat file: %w", err)
+	}
+	
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("invalid file: must be a regular file")
+	}
+	
+	// Security: limit file size to prevent DoS via huge files
+	if info.Size() > 10*1024*1024 { // 10MB max
+		return nil, fmt.Errorf("file too large: maximum size is 10MB")
+	}
+	
+	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read CIDR file: %w", err)
 	}

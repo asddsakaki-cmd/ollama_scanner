@@ -224,18 +224,28 @@ func (app *ScannerApp) Shutdown(ctx context.Context) error {
 }
 
 // processResults processes scan results
+// FIXED: Memory-efficient remaining target tracking with periodic compaction
 func (app *ScannerApp) processResults(ctx context.Context, resultChan <-chan models.ScanResult, formatter output.Formatter, stats *scanStats, detect, security bool, targets []models.Target) {
-	var remaining []string
+	// Efficient remaining target tracking to prevent memory leak
+	// Uses offset + periodic compaction instead of slice re-slicing
+	type remainingState struct {
+		targets []string
+		offset  int
+	}
+	
+	var state *remainingState
 	if app.checkpoint != nil {
 		// Pre-calculate remaining targets for checkpoint
-		remaining = make([]string, 0, len(targets))
+		remaining := make([]string, 0, len(targets))
 		for _, t := range targets {
 			remaining = append(remaining, t.Address())
 		}
+		state = &remainingState{targets: remaining, offset: 0}
 	}
 
 	var checkpointResults []models.ScanResult
 	checkpointInterval := 100 // Save every 100 results
+	compactionInterval := 1000 // Compact every 1000 targets to free memory
 
 	for portResult := range resultChan {
 		stats.processed++
@@ -286,10 +296,18 @@ func (app *ScannerApp) processResults(ctx context.Context, resultChan <-chan mod
 		}
 
 		// Checkpoint handling
-		if app.checkpoint != nil {
-			// Update remaining list (remove processed target)
-			if len(remaining) > 0 {
-				remaining = remaining[1:]
+		if app.checkpoint != nil && state != nil {
+			// Update remaining list using offset (memory-efficient)
+			state.offset++
+			
+			// Periodic compaction to free memory (every 1000 targets)
+			if state.offset >= compactionInterval {
+				if len(state.targets) > state.offset {
+					state.targets = state.targets[state.offset:]
+				} else {
+					state.targets = state.targets[:0]
+				}
+				state.offset = 0
 			}
 
 			// Collect results for checkpoint
@@ -297,7 +315,13 @@ func (app *ScannerApp) processResults(ctx context.Context, resultChan <-chan mod
 
 			// Save checkpoint periodically
 			if len(checkpointResults) >= checkpointInterval {
-				if err := app.checkpoint.MaybeSave(stats.processed, remaining, checkpointResults); err != nil {
+				// Get current remaining slice (accounting for offset)
+				var currentRemaining []string
+				if state.offset < len(state.targets) {
+					currentRemaining = state.targets[state.offset:]
+				}
+				
+				if err := app.checkpoint.MaybeSave(stats.processed, currentRemaining, checkpointResults); err != nil {
 					logger.Warn("Failed to save checkpoint", logger.Err(err))
 				}
 				checkpointResults = checkpointResults[:0] // Clear but keep capacity
@@ -309,8 +333,12 @@ func (app *ScannerApp) processResults(ctx context.Context, resultChan <-chan mod
 		case <-ctx.Done():
 			logger.Info("Result processing interrupted")
 			// Save final checkpoint before exit
-			if app.checkpoint != nil {
-				if err := app.checkpoint.Save(stats.processed, remaining, checkpointResults); err != nil {
+			if app.checkpoint != nil && state != nil {
+				var currentRemaining []string
+				if state.offset < len(state.targets) {
+					currentRemaining = state.targets[state.offset:]
+				}
+				if err := app.checkpoint.Save(stats.processed, currentRemaining, checkpointResults); err != nil {
 					logger.Warn("Failed to save final checkpoint", logger.Err(err))
 				}
 			}
@@ -320,8 +348,12 @@ func (app *ScannerApp) processResults(ctx context.Context, resultChan <-chan mod
 	}
 
 	// Final checkpoint save
-	if app.checkpoint != nil && len(checkpointResults) > 0 {
-		if err := app.checkpoint.Save(stats.processed, remaining, checkpointResults); err != nil {
+	if app.checkpoint != nil && len(checkpointResults) > 0 && state != nil {
+		var currentRemaining []string
+		if state.offset < len(state.targets) {
+			currentRemaining = state.targets[state.offset:]
+		}
+		if err := app.checkpoint.Save(stats.processed, currentRemaining, checkpointResults); err != nil {
 			logger.Warn("Failed to save final checkpoint", logger.Err(err))
 		}
 	}

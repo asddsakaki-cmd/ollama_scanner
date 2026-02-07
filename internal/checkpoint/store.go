@@ -19,10 +19,30 @@ type Store struct {
 }
 
 // NewStore creates a new checkpoint store
+// PERFORMANCE: Enables WAL mode for better concurrent write performance
 func NewStore(dbPath string) (*Store, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open checkpoint database: %w", err)
+	}
+
+	// Enable WAL mode for better performance and concurrency
+	// WAL mode allows readers to not block writers and vice versa
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
+	}
+
+	// Set synchronous to NORMAL for better performance while maintaining safety
+	if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to set synchronous mode: %w", err)
+	}
+
+	// Increase cache size for better performance (10MB)
+	if _, err := db.Exec("PRAGMA cache_size=-10000"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to set cache size: %w", err)
 	}
 
 	// Create tables if not exist
