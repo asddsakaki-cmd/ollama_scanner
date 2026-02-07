@@ -95,7 +95,9 @@ func (app *ScannerApp) Run(ctx context.Context, targets []models.Target, totalTa
 	resultChan, err := app.engine.Scan(ctx, targets)
 	if err != nil {
 		if app.checkpoint != nil {
-			app.checkpoint.Fail(err.Error())
+			if failErr := app.checkpoint.Fail(err.Error()); failErr != nil {
+				logger.Warn("Failed to record checkpoint failure", logger.Err(failErr))
+			}
 		}
 		return fmt.Errorf("failed to start scan: %w", err)
 	}
@@ -165,7 +167,10 @@ func (app *ScannerApp) RunWithResume(ctx context.Context, resumeInfo *checkpoint
 		// Parse "ip:port" format
 		var ip netip.Addr
 		var port int
-		fmt.Sscanf(addrPort, "%s:%d", &ip, &port)
+		if _, err := fmt.Sscanf(addrPort, "%s:%d", &ip, &port); err != nil {
+			logger.Warn("Failed to parse target address", logger.String("addr", addrPort), logger.Err(err))
+			continue
+		}
 		if ip.IsValid() && port > 0 {
 			targets = append(targets, models.Target{IP: ip, Port: port})
 		}

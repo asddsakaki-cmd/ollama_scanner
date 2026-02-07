@@ -200,8 +200,8 @@ func main() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
 
-		if err := scannerApp.Shutdown(shutdownCtx); err != nil {
-			logger.Error("Error during shutdown", logger.Err(err))
+		if shutdownErr := scannerApp.Shutdown(shutdownCtx); shutdownErr != nil {
+			logger.Error("Error during shutdown", logger.Err(shutdownErr))
 		}
 
 		cancel() // Cancel main context
@@ -292,7 +292,9 @@ func resumeScanFunc(dbPath, scanID string, cfg *core.Config, noDetect, noSecurit
 		logger.Info("Received shutdown signal, initiating graceful shutdown...")
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
-		scannerApp.Shutdown(shutdownCtx)
+		if err := scannerApp.Shutdown(shutdownCtx); err != nil {
+			logger.Error("Error during shutdown", logger.Err(err))
+		}
 		cancel()
 	}()
 
