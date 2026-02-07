@@ -1,40 +1,62 @@
 # Binaries for programs and plugins
+*.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+ollama-scanner
 
 # Test binary, built with `go test -c`
 *.test
 
-# Output of the go coverage tool
+# Output of the Go coverage tool
 *.out
+coverage.html
+coverage.txt
 
 # Go workspace file
 go.work
 go.work.sum
 
+# Dependency directories
+vendor/
+
 # Environment files
 .env
-env.json
+.env.local
 
-# Vendor directory
-vendor/
-/vendor/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
-# Logs and data files
-logs/
-logs/changelog
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+build/
+dist/
+
+# Data files
 *.csv
+*.json
+*.jsonl
 *.log
-*.log.*
-!logs/.gitkeep
+logs/
 
-# Test directories
-test/
 # Checkpoints & Results
 checkpoints.db
 *.db
 results/
 checkpoints/
-releases/*/checkpoints/
+
+# Old releases (keep only latest in releases/)
+Releases/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
