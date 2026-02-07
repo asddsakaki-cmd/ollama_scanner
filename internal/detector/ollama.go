@@ -352,7 +352,7 @@ func (c *Client) GenerateStream(ctx context.Context, target models.Target, model
 	}
 
 	// FIXED: Drain remaining body for connection reuse
-	io.Copy(io.Discard, resp.Body)
+	_, _ = io.Copy(io.Discard, resp.Body) //nolint:gosec // G104: draining body, error not needed
 
 	totalTime := time.Since(start)
 	firstTokenLatency := firstTokenTime.Sub(start)
@@ -398,7 +398,7 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, int, error) {
 	
 	// FIXED: Drain any remaining body for connection reuse
 	if err == nil {
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body) //nolint:gosec // G104: draining body, error not needed
 	}
 	
 	if err != nil {
@@ -427,7 +427,7 @@ func (c *Client) post(ctx context.Context, url string, body []byte) ([]byte, int
 	
 	// FIXED: Drain any remaining body for connection reuse
 	if err == nil {
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body) //nolint:gosec // G104: draining body, error not needed
 	}
 	
 	if err != nil {

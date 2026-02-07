@@ -302,7 +302,7 @@ func benchmarkLoad(b *testing.B, numTargets, workers, rateLimit int) {
 
 		b.StopTimer()
 		cancel()
-		s.Close()
+		_ = s.Close() //nolint:gosec // G104: test file, error not needed
 	}
 
 	// Report throughput

@@ -29,25 +29,25 @@ func NewStore(dbPath string) (*Store, error) {
 	// Enable WAL mode for better performance and concurrency
 	// WAL mode allows readers to not block writers and vice versa
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
+		_ = db.Close() //nolint:gosec // G104: secondary error, primary error returned
 		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
 	}
 
 	// Set synchronous to NORMAL for better performance while maintaining safety
 	if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
-		db.Close()
+		_ = db.Close() //nolint:gosec // G104: secondary error, primary error returned
 		return nil, fmt.Errorf("failed to set synchronous mode: %w", err)
 	}
 
 	// Increase cache size for better performance (10MB)
 	if _, err := db.Exec("PRAGMA cache_size=-10000"); err != nil {
-		db.Close()
+		_ = db.Close() //nolint:gosec // G104: secondary error, primary error returned
 		return nil, fmt.Errorf("failed to set cache size: %w", err)
 	}
 
 	// Create tables if not exist
 	if err := createTables(db); err != nil {
-		db.Close()
+		_ = db.Close() //nolint:gosec // G104: secondary error, primary error returned
 		return nil, err
 	}
 
@@ -149,8 +149,12 @@ func (s *Store) GetLatestCheckpoint(scanID string) (*Checkpoint, error) {
 	}
 
 	// Unmarshal JSON fields
-	json.Unmarshal([]byte(remainingJSON), &cp.RemainingTargets)
-	json.Unmarshal([]byte(resultsJSON), &cp.Results)
+	if err := json.Unmarshal([]byte(remainingJSON), &cp.RemainingTargets); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal remaining targets: %w", err)
+	}
+	if err := json.Unmarshal([]byte(resultsJSON), &cp.Results); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal results: %w", err)
+	}
 
 	return &cp, nil
 }
@@ -173,7 +177,9 @@ func (s *Store) GetScan(scanID string) (*ScanInfo, error) {
 		return nil, err
 	}
 
-	json.Unmarshal([]byte(configJSON), &info.Config)
+	if err := json.Unmarshal([]byte(configJSON), &info.Config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
 	return &info, nil
 }
 

@@ -33,7 +33,7 @@ type ScannerApp struct {
 	// Lifecycle management
 	wg     sync.WaitGroup
 	cancel context.CancelFunc
-	mu     sync.Mutex
+	mu     sync.Mutex //nolint:unused // Reserved for future use
 }
 
 // ScannerDeps holds dependencies for the scanner app
@@ -255,7 +255,7 @@ func (app *ScannerApp) processResults(ctx context.Context, resultChan <-chan mod
 	for portResult := range resultChan {
 		stats.processed++
 
-		var finalResult models.ScanResult = portResult
+		finalResult := portResult
 
 		// If port is open, perform Ollama detection
 		if portResult.Open && app.detector != nil && detect {

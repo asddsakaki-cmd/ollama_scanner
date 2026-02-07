@@ -99,7 +99,9 @@ func (m *Manager) ResumeScan(scanID string) (*ResumeInfo, error) {
 	}
 
 	// Update status to running
-	m.store.UpdateScanStatus(scanID, "running")
+	if err := m.store.UpdateScanStatus(scanID, "running"); err != nil {
+		logger.Warn("Failed to update scan status", logger.Err(err))
+	}
 
 	logger.Info("Resuming scan from checkpoint",
 		logger.String("scan_id", scanID),

@@ -200,7 +200,7 @@ func (s *NativeScanner) scanPort(ctx context.Context, target models.Target) mode
 
 	// FIXED: Always close connection properly
 	if conn != nil {
-		conn.Close()
+		_ = conn.Close() //nolint:gosec // G104: close error not actionable here
 	}
 
 	return result

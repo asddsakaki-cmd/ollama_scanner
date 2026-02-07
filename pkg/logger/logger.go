@@ -70,6 +70,7 @@ func createLogger(cfg Config) (*zap.Logger, error) {
 	var writeSyncer zapcore.WriteSyncer
 	if cfg.File != "" {
 		// File output
+		//nolint:gosec // G302: 0644 is standard for log files
 		file, err := os.OpenFile(cfg.File, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			return nil, err

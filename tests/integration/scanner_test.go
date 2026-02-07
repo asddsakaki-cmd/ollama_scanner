@@ -32,13 +32,13 @@ func mockServer(t *testing.T, addr string) (net.Listener, func()) {
 			go func(c net.Conn) {
 				defer c.Close()
 				buf := make([]byte, 1024)
-				c.Read(buf)
+				_, _ = c.Read(buf) //nolint:gosec // G104: test file, error not needed
 			}(conn)
 		}
 	}()
 
 	cleanup := func() {
-		ln.Close()
+		_ = ln.Close() //nolint:gosec // G104: test file, error not needed
 	}
 
 	return ln, cleanup

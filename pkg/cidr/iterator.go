@@ -97,7 +97,7 @@ func (it *Iterator) Count() uint64 {
 			if bits < 0 || bits > 32 {
 				continue // Invalid, skip
 			}
-			hostBits := uint(32 - bits)
+			hostBits := uint(32 - bits) //nolint:gosec // G115: bits is validated (16-32) by NewIterator
 			total += uint64(1) << hostBits
 		} else {
 			// For IPv6, cap to reasonable number
@@ -108,7 +108,7 @@ func (it *Iterator) Count() uint64 {
 			if hostBits > 60 {
 				total += uint64(1) << 60 // Cap to ~1 billion to prevent overflow
 			} else {
-				total += uint64(1) << uint(hostBits)
+				total += uint64(1) << uint(hostBits) //nolint:gosec // G115: hostBits is validated (0-60) above
 			}
 		}
 	}
@@ -315,6 +315,7 @@ func ParseCIDRFile(filename string) ([]string, error) {
 		return nil, fmt.Errorf("file too large: maximum size is 10MB")
 	}
 	
+	//nolint:gosec // G304: absPath is validated above (path traversal protection)
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read CIDR file: %w", err)

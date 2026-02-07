@@ -197,9 +197,10 @@ func (d *Detector) CheckAuthentication(ctx context.Context, target models.Target
 
 		accessibleCount++
 
-		if status == http.StatusOK {
+		switch status {
+		case http.StatusOK:
 			result.NoAuthEndpoints = append(result.NoAuthEndpoints, endpoint)
-		} else if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		case http.StatusUnauthorized, http.StatusForbidden:
 			result.ProtectedEndpoints = append(result.ProtectedEndpoints, endpoint)
 		}
 	}
@@ -471,7 +472,7 @@ func (d *Detector) CheckCORS(ctx context.Context, target models.Target) ([]strin
 	defer resp.Body.Close()
 	
 	// FIXED: Drain body for connection reuse
-	io.Copy(io.Discard, resp.Body)
+	_, _ = io.Copy(io.Discard, resp.Body) //nolint:gosec // G104: draining body, error not needed
 
 	// Check for dangerous CORS configurations
 	allowOrigin := resp.Header.Get("Access-Control-Allow-Origin")

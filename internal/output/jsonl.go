@@ -27,11 +27,13 @@ func NewJSONLFormatter(filename string) (*JSONLFormatter, error) {
 	// Ensure directory exists
 	dir := filepath.Dir(filename)
 	if dir != "" && dir != "." {
+		//nolint:gosec // G301: 0755 is intentional for output directory
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return nil, err
 		}
 	}
 
+	//nolint:gosec // G304: filename is validated by caller
 	file, err := os.Create(filename)
 	if err != nil {
 		return nil, err
@@ -64,6 +66,8 @@ func (f *JSONLFormatter) Flush() error {
 
 // Close closes the file
 func (f *JSONLFormatter) Close() error {
-	f.Flush()
+	if err := f.buffer.Flush(); err != nil {
+		return err
+	}
 	return f.writer.Close()
 }

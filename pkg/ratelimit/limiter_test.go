@@ -64,7 +64,7 @@ func TestLimiter_Wait_Cancellation(t *testing.T) {
 
 	// Use up the burst
 	ctx := context.Background()
-	l.Wait(ctx)
+	_ = l.Wait(ctx) //nolint:gosec // G104: error is not needed in test
 
 	// Create cancelled context
 	cancelledCtx, cancel := context.WithCancel(context.Background())
@@ -106,7 +106,7 @@ func TestLimiter_GetStats(t *testing.T) {
 
 	// Make some requests
 	for i := 0; i < 5; i++ {
-		l.Wait(ctx)
+		_ = l.Wait(ctx) //nolint:gosec // G104: error is not needed in test
 	}
 
 	stats := l.GetStats()
@@ -135,7 +135,7 @@ func TestLimiter_ConcurrentAccess(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < requestsPerGoroutine; j++ {
-				l.Wait(ctx)
+				_ = l.Wait(ctx) //nolint:gosec // G104: error is not needed in test
 			}
 		}()
 	}
