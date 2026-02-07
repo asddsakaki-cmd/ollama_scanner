@@ -1,0 +1,72 @@
+# Docker Compose for Ollama Scanner 3.0
+# Usage: docker-compose up -d
+
+version: '3.8'
+
+services:
+  scanner:
+    build: .
+    image: ollama-scanner:3.0.0
+    container_name: ollama-scanner
+    
+    # Security: Run as non-root
+    user: "1000:1000"
+    
+    # Network configuration
+    network_mode: host  # Required for scanning localhost network
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    
+    # Environment variables
+    environment:
+      - SCANNER_LOG_LEVEL=info
+      - SCANNER_CHECKPOINT_DB=/app/checkpoints/checkpoints.db
+    
+    # Volumes for persistence
+    volumes:
+      - ./results:/app/results
+      - ./checkpoints:/app/checkpoints
+      - ./configs:/app/configs:ro
+    
+    # Command to run (override default)
+    # Example: scan local network
+    # command: ["-targets", "192.168.1.0/24", "-rate", "1000", "-workers", "100"]
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "ollama-scanner", "-version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Logging
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: Web UI for viewing results (future feature)
+  # webui:
+  #   image: nginx:alpine
+  #   container_name: ollama-scanner-webui
+  #   ports:
+  #     - "8080:80"
+  #   volumes:
+  #     - ./results:/usr/share/nginx/html/results:ro
+  #     - ./web:/usr/share/nginx/html:ro
+  #   depends_on:
+  #     - scanner
+  #   restart: unless-stopped

@@ -1,0 +1,81 @@
+# Ollama Scanner Configuration
+# Version: 3.0.0 (2026)
+
+scanner:
+  # Scanner engine: native, zmap, masscan
+  # - native: Pure Go implementation (recommended, no dependencies)
+  # - zmap: Linux high-speed scanning (requires root)
+  # - masscan: Universal high-speed scanning (requires root)
+  engine: native
+  
+  # Concurrency settings
+  concurrency: 1000        # Number of concurrent workers
+  timeout: 3s              # Connection timeout
+  rate_limit: 5000         # Max requests per second
+  adaptive: true           # Auto-adjust rate based on network conditions
+  
+  # Target configuration
+  targets:
+    cidrs: []              # List of CIDRs to scan (e.g., ["10.0.0.0/24"])
+    ports: [11434]         # Ports to scan
+    file: ""               # File containing CIDR list (one per line)
+  
+  # Security audit settings
+  security:
+    check_auth: true              # Check if authentication is enabled
+    check_tools: true             # Detect tool-calling capabilities (CRITICAL!)
+    check_mcp: true               # Detect Model Context Protocol support
+    check_uncensored: true        # Detect uncensored models
+    check_cves: true              # Check for known CVEs
+    benchmark: true               # Run performance benchmark
+    benchmark_prompt: "Why does the sun shine? Answer in one sentence."
+  
+  # Native scanner settings
+  native:
+    workers: 1000               # Worker pool size
+    retry: 1                    # Retry attempts for failed connections
+    retry_delay: 1s             # Delay between retries
+  
+  # Zmap settings (legacy)
+  zmap:
+    threads: 10
+    interface: eth0
+    gateway_mac: ""             # Auto-detected if empty
+  
+  # Masscan settings (legacy)
+  masscan:
+    rate: 1000
+    interface: eth0
+
+# Output configuration
+output:
+  formats: [jsonl, console]     # Output formats: jsonl, csv, console
+  file_prefix: ollama_scan      # Prefix for output files
+  directory: ./results          # Output directory
+  
+  # Console output settings
+  console:
+    enabled: true
+    dashboard: true             # Use Bubble Tea dashboard
+    progress: true              # Show progress bar
+
+# Database configuration
+database:
+  primary: ""                   # PostgreSQL connection string (optional)
+  sqlite: scanner.db            # SQLite path for checkpoint/resume
+  mongodb: ""                   # MongoDB connection string (optional)
+
+# Checkpoint/resume configuration
+checkpoint:
+  enabled: true
+  interval: 30s                 # Auto-save interval
+  max_keep: 10                  # Keep last N checkpoints
+
+# Logging configuration
+log:
+  level: info                   # debug, info, warn, error
+  format: console               # json, console
+  file: ""                      # Log file path (empty = stdout)
+  max_size: 100                 # MB
+  max_backups: 3
+  max_age: 7                    # days

@@ -1,60 +1,50 @@
-# 构建阶段
-FROM golang:1.21.6-alpine AS builder
+# Dockerfile for Ollama Scanner 3.0
+# Multi-stage build for minimal image size
 
-# 安装系统依赖
-RUN apk add --no-cache \
-    gcc \
-    musl-dev \
-    linux-headers \
-    git
+# Build stage
+FROM golang:1.23-alpine AS builder
 
-# 设置工作目录
-WORKDIR /build
+# Install build dependencies
+RUN apk add --no-cache git gcc musl-dev sqlite-dev
 
-# 复制 go.mod 和 go.sum
-COPY Src/go.mod Src/go.sum ./
-RUN go mod download
-
-# 复制源码
-COPY Src/ ./
-
-# 编译
-RUN CGO_ENABLED=0 GOOS=linux go build -o ollama_scanner
-
-# 运行阶段
-FROM alpine:latest
-
-# 安装运行时依赖
-RUN apk add --no-cache \
-    zmap \
-    masscan \
-    sudo \
-    ca-certificates \
-    tzdata
-
-# 设置时区
-RUN cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
-    echo "Asia/Shanghai" > /etc/timezone
-
-# 设置工作目录
 WORKDIR /app
 
-# 复制编译产物和配置文件
-COPY --from=builder /build/ollama_scanner .
-COPY Src/.env ./.env
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
 
-# 创建数据目录
-RUN mkdir -p data
+# Copy source code
+COPY . .
 
-# 创建非 root 用户
-RUN adduser -D -u 1000 scanner && \
+# Build the binary
+RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo \
+    -ldflags="-w -s -X main.version=3.0.0 -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -o ollama-scanner ./cmd/scanner
+
+# Runtime stage
+FROM alpine:latest
+
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates sqlite-libs
+
+# Create non-root user
+RUN addgroup -g 1000 scanner && \
+    adduser -D -u 1000 -G scanner scanner
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /app/ollama-scanner /usr/local/bin/ollama-scanner
+
+# Create directories for data
+RUN mkdir -p /app/results /app/checkpoints && \
     chown -R scanner:scanner /app
 
-# 切换到非 root 用户
+# Switch to non-root user
 USER scanner
 
-# 暴露端口
-EXPOSE 11434
+# Default entrypoint
+ENTRYPOINT ["ollama-scanner"]
 
-# 设置入口点
-ENTRYPOINT ["/app/ollama_scanner"]
+# Default command (show help)
+CMD ["--help"]
