@@ -231,16 +231,23 @@ func IsPrivate(addr netip.Addr) bool {
 	return false
 }
 
-// CIDR size limits for DoS protection
+// CIDR size limits for safety warnings (not hard limits)
 const (
-	// MaxIPv4Hosts limits IPv4 scans to /16 (65,536 hosts max)
+	// MaxIPv4Hosts recommended limit for IPv4 (/16 = 65,536 hosts)
 	MaxIPv4PrefixSize = 16
-	// MaxIPv6Hosts limits IPv6 scans to /64 (standard subnet size)
+	// MaxIPv6Hosts recommended limit for IPv6 (/64)
 	MaxIPv6PrefixSize = 64
 )
 
-// ValidateCIDRs validates a list of CIDR strings and enforces size limits
-// to prevent DoS attacks via memory exhaustion
+// CIDRSizeInfo holds information about CIDR size
+type CIDRSizeInfo struct {
+	TotalHosts   uint64
+	IsVeryLarge  bool
+	Warning      string
+}
+
+// ValidateCIDRs validates a list of CIDR strings
+// Now allows any size but returns warnings for large CIDRs
 func ValidateCIDRs(cidrs []string) error {
 	for _, cidr := range cidrs {
 		cidr = strings.TrimSpace(cidr)
@@ -257,21 +264,68 @@ func ValidateCIDRs(cidrs []string) error {
 			continue
 		}
 		
-		// Enforce CIDR size limits for DoS protection
-		bits := prefix.Bits()
-		if prefix.Addr().Is4() {
-			if bits < MaxIPv4PrefixSize {
-				return fmt.Errorf("IPv4 CIDR %s too large: /%d exceeds maximum allowed /%d (65,536 hosts)", 
-					cidr, bits, MaxIPv4PrefixSize)
-			}
-		} else {
-			if bits < MaxIPv6PrefixSize {
-				return fmt.Errorf("IPv6 CIDR %s too large: /%d exceeds maximum allowed /%d", 
-					cidr, bits, MaxIPv6PrefixSize)
-			}
-		}
+		// Parse successful - no hard limits enforced
+		// Size warnings are handled separately by CheckCIDRSize
+		_ = prefix
 	}
 	return nil
+}
+
+// CheckCIDRSize checks CIDR size and returns warning info
+// Returns warning message if CIDR is considered large
+func CheckCIDRSize(cidrs []string, ports []int) (*CIDRSizeInfo, error) {
+	var totalHosts uint64
+	
+	for _, cidr := range cidrs {
+		cidr = strings.TrimSpace(cidr)
+		if cidr == "" {
+			continue
+		}
+		
+		prefix, err := netip.ParsePrefix(cidr)
+		if err != nil {
+			// Single IP counts as 1
+			if _, err := netip.ParseAddr(cidr); err == nil {
+				totalHosts += uint64(len(ports))
+			}
+			continue
+		}
+		
+		bits := prefix.Bits()
+		var hosts uint64
+		if prefix.Addr().Is4() {
+			hostBits := uint(32 - bits)
+			hosts = uint64(1) << hostBits
+		} else {
+			hostBits := 128 - bits
+			if hostBits > 60 {
+				hosts = uint64(1) << 60 // Cap IPv6
+			} else {
+				hosts = uint64(1) << uint(hostBits)
+			}
+		}
+		totalHosts += hosts * uint64(len(ports))
+	}
+	
+	info := &CIDRSizeInfo{
+		TotalHosts: totalHosts,
+	}
+	
+	// Set warnings based on size
+	switch {
+	case totalHosts > 1000000000: // > 1 billion
+		info.IsVeryLarge = true
+		info.Warning = fmt.Sprintf("EXTREMELY LARGE SCAN: %d targets (1000M+). This will take hours and consume significant resources.", totalHosts)
+	case totalHosts > 10000000: // > 10 million
+		info.IsVeryLarge = true
+		info.Warning = fmt.Sprintf("VERY LARGE SCAN: %d targets (10M+). Ensure you have adequate resources.", totalHosts)
+	case totalHosts > 100000: // > 100k
+		info.Warning = fmt.Sprintf("Large scan: %d targets (100K+). Consider using smaller batches.", totalHosts)
+	case totalHosts > 65536: // > /16
+		info.Warning = fmt.Sprintf("Warning: %d targets. This exceeds recommended /16 size.", totalHosts)
+	}
+	
+	return info, nil
 }
 
 // ParseCIDRFile parses CIDRs from a file (one per line)

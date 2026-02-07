@@ -29,32 +29,57 @@ var (
 	ErrMetadataBlocked  = errors.New("cloud metadata endpoints are blocked")
 )
 
-// blockedMetadataEndpoints contains cloud provider metadata IPs that should never be scanned
+// blockedMetadataEndpoints contains cloud provider metadata IPs
+// These are WARNED but not blocked (can be scanned with --force flag)
 var blockedMetadataEndpoints = map[string]bool{
 	"169.254.169.254": true, // AWS, GCP, Azure metadata
 	"169.254.170.2":   true, // AWS ECS metadata
 	"192.0.0.192":     true, // Oracle Cloud metadata
 }
 
-// validateTarget checks if target is allowed (SSRF protection)
-func validateTarget(target models.Target) error {
-	// Block cloud metadata endpoints
+// TargetWarning holds warning information about a target
+type TargetWarning struct {
+	IsMetadata bool
+	IsPrivate  bool
+	IsLoopback bool
+	Message    string
+}
+
+// CheckTargetWarnings checks if target has any warnings
+// Returns warning info but doesn't block the scan
+func CheckTargetWarnings(target models.Target) *TargetWarning {
+	warning := &TargetWarning{}
+	
+	// Check metadata endpoints
 	if blockedMetadataEndpoints[target.IP.String()] {
-		return ErrMetadataBlocked
+		warning.IsMetadata = true
+		warning.Message = fmt.Sprintf("WARNING: %s is a cloud metadata endpoint. Scanning may have security implications.", target.IP)
 	}
 	
-	// Block private IP ranges to prevent internal network scanning
-	// This can be disabled with --allow-private if needed for internal scanning
+	// Check private ranges (warning only)
 	if target.IP.IsLoopback() {
-		return fmt.Errorf("%w: loopback address %s", ErrPrivateIPBlocked, target.IP)
-	}
-	if target.IP.IsPrivate() {
-		return fmt.Errorf("%w: private address %s", ErrPrivateIPBlocked, target.IP)
-	}
-	if target.IP.IsLinkLocalUnicast() {
-		return fmt.Errorf("%w: link-local address %s", ErrPrivateIPBlocked, target.IP)
+		warning.IsLoopback = true
+		warning.Message = fmt.Sprintf("WARNING: %s is a loopback address.", target.IP)
+	} else if target.IP.IsPrivate() {
+		warning.IsPrivate = true
+		warning.Message = fmt.Sprintf("WARNING: %s is a private RFC1918 address.", target.IP)
+	} else if target.IP.IsLinkLocalUnicast() {
+		warning.IsPrivate = true
+		warning.Message = fmt.Sprintf("WARNING: %s is a link-local address.", target.IP)
 	}
 	
+	if warning.Message == "" {
+		return nil
+	}
+	return warning
+}
+
+// validateTarget minimal validation - only blocks truly invalid targets
+func validateTarget(target models.Target) error {
+	// Only block if IP is invalid
+	if !target.IP.IsValid() {
+		return fmt.Errorf("invalid IP address: %s", target.IP)
+	}
 	return nil
 }
 

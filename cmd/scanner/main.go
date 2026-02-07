@@ -48,6 +48,9 @@ func main() {
 		showVersion     = flag.Bool("version", false, "Show version and exit")
 		verbose         = flag.Bool("v", false, "Verbose output (debug level)")
 		listEngines     = flag.Bool("list-engines", false, "List available scanner engines")
+		// Safety flags
+		forceLargeScan  = flag.Bool("force", false, "Force scan of large CIDRs without confirmation (DANGEROUS)")
+		assumeYes       = flag.Bool("yes", false, "Auto-confirm all warnings and prompts")
 		// Checkpoint flags
 		resumeScan      = flag.String("resume", "", "Resume scan from checkpoint (scan ID)")
 		listCheckpoints = flag.Bool("list-checkpoints", false, "List available checkpoints")
@@ -158,19 +161,64 @@ func main() {
 		logger.Int("ports", len(cfg.Scanner.Targets.Ports)),
 	)
 
-	// Warn for large scans
-	if targetCount > 1000000 {
-		estimatedDuration := time.Duration(float64(targetCount)/float64(cfg.Scanner.RateLimit)) * time.Second
-		logger.Warn("Large scan detected",
-			logger.Int64("targets", targetCount),
-			logger.String("estimated_duration", estimatedDuration.String()),
-		)
+	// Check CIDR size and show warnings
+	cidrInfo, err := cidr.CheckCIDRSize(cfg.Scanner.Targets.CIDRs, cfg.Scanner.Targets.Ports)
+	if err != nil {
+		logger.Error("Failed to check CIDR size", logger.Err(err))
+		os.Exit(1)
+	}
 
-		// Safety check for 0.0.0.0/0
-		for _, cidrStr := range cfg.Scanner.Targets.CIDRs {
-			if cidrStr == "0.0.0.0/0" || cidrStr == "::/0" {
-				logger.Fatal("Internet-wide scanning (0.0.0.0/0) is blocked by safety limit. " +
-					"Use -max-targets flag to override if you really intend to scan the entire internet.")
+	// Show size warning if applicable
+	if cidrInfo.Warning != "" {
+		fmt.Println("\n╔════════════════════════════════════════════════════════════════╗")
+		fmt.Println("║                    ⚠️  SCAN SIZE WARNING                        ║")
+		fmt.Println("╠════════════════════════════════════════════════════════════════╣")
+		fmt.Printf("║ %s\n", cidrInfo.Warning)
+		fmt.Println("╠════════════════════════════════════════════════════════════════╣")
+		estimatedDuration := time.Duration(float64(cidrInfo.TotalHosts)/float64(cfg.Scanner.RateLimit)) * time.Second
+		fmt.Printf("║ Total targets: %d\n", cidrInfo.TotalHosts)
+		fmt.Printf("║ Estimated time: %s\n", estimatedDuration)
+		fmt.Printf("║ Memory required: ~%.1f MB\n", float64(cidrInfo.TotalHosts)*0.01/1024)
+		fmt.Println("╚════════════════════════════════════════════════════════════════╝\n")
+
+		// Require confirmation for very large scans
+		if cidrInfo.IsVeryLarge && !*forceLargeScan {
+			if *assumeYes {
+				logger.Warn("Large scan auto-confirmed via -yes flag")
+			} else {
+				fmt.Print("Continue with this scan? [y/N]: ")
+				var response string
+				fmt.Scanln(&response)
+				if response != "y" && response != "Y" && response != "yes" {
+					logger.Info("Scan cancelled by user")
+					os.Exit(0)
+				}
+			}
+		}
+	}
+
+	// Show warning for 0.0.0.0/0
+	for _, cidrStr := range cfg.Scanner.Targets.CIDRs {
+		if cidrStr == "0.0.0.0/0" || cidrStr == "::/0" {
+			fmt.Println("\n╔════════════════════════════════════════════════════════════════╗")
+			fmt.Println("║              🚨 INTERNET-WIDE SCAN WARNING                      ║")
+			fmt.Println("╠════════════════════════════════════════════════════════════════╣")
+			fmt.Println("║ You are about to scan the ENTIRE INTERNET!                    ║")
+			fmt.Println("║ This will take hours/days and consume massive resources.      ║")
+			fmt.Println("╚════════════════════════════════════════════════════════════════╝\n")
+			
+			if !*forceLargeScan {
+				if *assumeYes {
+					logger.Warn("Internet-wide scan auto-confirmed via -yes flag")
+				} else {
+					fmt.Print("Are you ABSOLUTELY SURE? Type 'YES' to continue: ")
+					var response string
+					fmt.Scanln(&response)
+					if response != "YES" {
+						logger.Info("Scan cancelled")
+						os.Exit(0)
+					}
+				}
 			}
 		}
 	}
